@@ -1,4 +1,5 @@
-﻿using System;
+﻿using photo.exif;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -9,11 +10,17 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Threading;
+using Utils;
 
 namespace ImageCatalogOrganizer
 {
     public class MainWindowViewModel : ViewModelBase
     {
+        private string _outputPath;
+        private string _rootPath;
+        private string _logText;
+        private int _concurrencyLevel = 1;
+
         public string LogText
         {
             get => _logText;
@@ -25,129 +32,192 @@ namespace ImageCatalogOrganizer
         }
 
         private BackgroundWorker backgroundWorker = new BackgroundWorker();
-        private string _selectedPath;
-        private string _logText;
-        private int _concurrencyLevel = 1;
+
+        
         public int FilesFound { get; set; }
         public event PropertyChangedEventHandler PropertyChanged;
-        public string SelectedPath
+
+        public string OutputPath
         {
-            get => _selectedPath;
+            get => _outputPath;
             set
             {
-                _selectedPath = value;
-                OnPropertyChanged("SelectedPath");
-                GoAction.RaiseCanExecuteChanged();
-                Properties.Settings.Default["SelectedPath"] = _selectedPath;
+                _outputPath = value;
+                OnPropertyChanged("OutputPath");
+                ProcessImages.RaiseCanExecuteChanged();
+                Properties.Settings.Default["OutputPath"] = _outputPath;
                 Properties.Settings.Default.Save();
             }
         }
-        public DelegateCommand FileBrowseAction { get; }
-        public DelegateCommand GoAction { get; }
+        public string RootPath
+        {
+            get => _rootPath;
+            set
+            {
+                _rootPath = value;
+                OnPropertyChanged("RootPath");
+                ProcessImages.RaiseCanExecuteChanged();
+                Properties.Settings.Default["RootPath"] = _rootPath;
+                Properties.Settings.Default.Save();
+            }
+        }
+        public DelegateCommand BrowseOutputFolder { get; }
+        public DelegateCommand BrowseRootFolder { get; }
+        public DelegateCommand ProcessImages { get; }
 
         public MainWindowViewModel()
         {
             backgroundWorker.DoWork += BackgroundWorker_DoWork;
             backgroundWorker.RunWorkerCompleted += BackgroundWorker_RunWorkerCompleted;
-            FileBrowseAction = new DelegateCommand(ExecuteButtonFileBrowseAction, canExecuteFileBrowseAction);
-            GoAction = new DelegateCommand(ExecuteGoAction, CanExecuteGoAction);
-            SelectedPath = Properties.Settings.Default["SelectedPath"]?.ToString();
+            BrowseOutputFolder = new DelegateCommand(ExecuteBrowseOutputFolder);
+            BrowseRootFolder = new DelegateCommand(ExecuteBrowseRootFolder);
+            ProcessImages = new DelegateCommand(ExecuteProcessImages, CanProcessImages);
+            RootPath = Properties.Settings.Default["RootPath"]?.ToString();
+            OutputPath = Properties.Settings.Default["OutputPath"]?.ToString();
             int numProcs = Environment.ProcessorCount;
+
             _concurrencyLevel = numProcs * 2;
             addLogEntry($"{numProcs} processors, using {_concurrencyLevel} threads");
             FilesFound = 0;
         }
 
-        private void ExecuteGoAction(object obj)
+        private void ExecuteProcessImages(object obj)
         {
             backgroundWorker.RunWorkerAsync();
-            FileBrowseAction.RaiseCanExecuteChanged();
-            GoAction.RaiseCanExecuteChanged();
+            ProcessImages.RaiseCanExecuteChanged();
         }
 
-        private bool CanExecuteGoAction(object obj)
+        private bool CanProcessImages(object obj)
         {
-            return string.IsNullOrEmpty(SelectedPath) == false && backgroundWorker.IsBusy == false;
+            return string.IsNullOrEmpty(OutputPath) == false && string.IsNullOrEmpty(RootPath) == false && backgroundWorker.IsBusy == false;
         }
 
-        private bool canExecuteFileBrowseAction(object obj)
-        {
-            return backgroundWorker.IsBusy == false;
-        }
-
-        // actions
-        private void ExecuteButtonFileBrowseAction(object obj)
+        private void ExecuteBrowseRootFolder(object obj)
         {
             if (backgroundWorker.IsBusy)
                 return;
 
             var fbd = new FolderBrowserDialog();
-            fbd.SelectedPath = SelectedPath;
+            fbd.SelectedPath = RootPath;
             if (fbd.ShowDialog() != DialogResult.OK)
                 return;
 
-            SelectedPath = fbd.SelectedPath;
+            RootPath = fbd.SelectedPath;
+        }
+
+        private void ExecuteBrowseOutputFolder(object obj)
+        {
+            if (backgroundWorker.IsBusy)
+                return;
+
+            var fbd = new FolderBrowserDialog();
+            fbd.SelectedPath = OutputPath;
+            if (fbd.ShowDialog() != DialogResult.OK)
+                return;
+
+            OutputPath = fbd.SelectedPath;
         }
 
         private void BackgroundWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
         {
-            FileBrowseAction.RaiseCanExecuteChanged();
-            GoAction.RaiseCanExecuteChanged();
+            ProcessImages.RaiseCanExecuteChanged();
         }
 
         private void BackgroundWorker_DoWork(object sender, DoWorkEventArgs e)
         {
             clearLog();
-            
-            processFiles(SelectedPath);
             HashToFile.Clear();
             FilesFound = 0;
+
             disp.BeginInvoke((Action)(() =>
             {
                 OnPropertyChanged("FilesFound");
             }));
 
-            //var files = getFiles("laz");
-            //addLogEntry($"Found {files.Count()} LasZip-compressed files");
-
-            //foreach (var file in files)
-            //{
-            //    processLazFile(file);
-            //}
+            processFiles();
 
             addLogEntry($"Found {HashToFile.Count} unique files");
+
+            organizeFiles();
         }
 
         ConcurrentDictionary<string, string> HashToFile = new ConcurrentDictionary<string, string>();
         Dispatcher disp = System.Windows.Application.Current.Dispatcher;
-        private void processFiles(string rootPath)
-        {            
-            var files = Directory.GetFiles(rootPath);
-            addLogEntry($"Processing {files.Length:N0} files in {rootPath}");
 
-            Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = _concurrencyLevel }, (file) =>
-            {
-                var hash = getFileHash(file);
-                var added = HashToFile.TryAdd(hash, file);
-                if (!added)
-                {
-                    addLogEntry($"Ignoring duplicate file {file}");
-                }
-                else
-                {
-                    FilesFound += 1;
-                    disp.BeginInvoke((Action)(() =>
-                    {
-                        OnPropertyChanged("FilesFound");
-                    }));
-                }
-            });
+        private void organizeFiles()
+        {
+            var outputRoot = Path.Combine(RootPath, $"{DateTime.Now.Date:yyyy-MM-dd} output");
+            addLogEntry($"Processing unique files to {outputRoot}");
 
-            var directories = Directory.GetDirectories(rootPath);
-            foreach (var directory in directories)
+            if (Directory.Exists(outputRoot))
             {
-                processFiles(directory);
+                if (MessageBox.Show($"Folder {outputRoot} already exists, delete it before proceeding?", "Delete existing output folder?", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    addLogEntry($"Deleting {outputRoot}");
+                    Directory.Delete(outputRoot, true);
+                }
             }
+            
+            Parallel.ForEach(HashToFile, new ParallelOptions { MaxDegreeOfParallelism = _concurrencyLevel }, (kvp) =>
+            {
+                var filePath = kvp.Value;
+
+                var parser = new Parser();
+                var exifItems = parser.Parse(filePath);
+
+                //var creationTime = File.GetCreationTime(filePath);
+                //var imageOutputPath = Path.Combine(outputRoot, creationTime.Year.ToString());
+                //var extension = Path.GetExtension(filePath);
+
+                //if (Directory.Exists(imageOutputPath) == false)
+                //    Directory.CreateDirectory(imageOutputPath);
+                
+                
+            });
+        }
+        private void processFiles()
+        {
+            addLogEntry($"Getting files from {RootPath}, please wait...");
+            Dictionary<FileTypeCode, FileWrapper> files;
+            try
+            {
+                files = FileFinder.GetAllFiles(RootPath);                
+            }
+            catch (Exception e)
+            {
+                addLogEntry($"Error: {e.Message}");
+                return;
+            }
+
+
+            
+
+            //var files = Directory.GetFiles(rootPath);
+            //addLogEntry($"Processing {files.Length:N0} files in {rootPath}");
+
+            //Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = _concurrencyLevel }, (file) =>
+            //{
+            //    var hash = getFileHash(file);
+            //    var added = HashToFile.TryAdd(hash, file);
+            //    if (!added)
+            //    {
+            //        addLogEntry($"Ignoring duplicate file {file}");
+            //    }
+            //    else
+            //    {
+            //        FilesFound += 1;
+            //        disp.BeginInvoke((Action)(() =>
+            //        {
+            //            OnPropertyChanged("FilesFound");
+            //        }));
+            //    }
+            //});
+
+            //var directories = Directory.GetDirectories(rootPath);
+            //foreach (var directory in directories)
+            //{
+            //    processFiles(directory);
+            //}
         }
 
         private static string getFileHash(string file)
@@ -165,6 +235,7 @@ namespace ImageCatalogOrganizer
             var disp = System.Windows.Application.Current.Dispatcher;
             disp.BeginInvoke((Action)(() => { LogText = string.Empty; }));
         }
+
         private void addLogEntry(string log, bool excludeTimestamp = false)
         {
             if (string.IsNullOrWhiteSpace(log))

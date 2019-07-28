@@ -9,23 +9,48 @@
     <Grid Margin="5">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
 
-        <TextBlock Margin="5,0,5,0" Padding="3" Text="Root path"/>
-        <TextBox Grid.Column="1" Text="{Binding SelectedPath, UpdateSourceTrigger=PropertyChanged}" HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" MinWidth="400"/>
-        <StackPanel Grid.Column="2" Orientation="Horizontal">
-            <Button Margin="0,0,5,0" Padding="3" Command="{Binding FileBrowseAction}" Content="..." MaxWidth="200"/>
-            <Button Command="{Binding GoAction}" Padding="3" Content="Go" MaxWidth="200"/>
-        </StackPanel>
-        <TextBox Margin="5" Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding LogText}" FontFamily="Consolas" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" IsReadOnly="True" />
-        <StackPanel Grid.Row="3" Grid.Column="2" HorizontalAlignment="Right" Orientation="Horizontal">
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <TextBlock Margin="5,0,5,0" Padding="3" Text="Search path root" Width="100"/>
+            <TextBox Grid.Column="1" Margin="0,0,5,0" Text="{Binding RootPath, UpdateSourceTrigger=PropertyChanged}" HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" MinWidth="400"/>
+            
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button Margin="0,0,5,0" Padding="3" Command="{Binding BrowseRootFolder}" Content="Browse" Width="100"/>
+                <!--<Button Command="{Binding GoAction}" Padding="3" Content="Go" MaxWidth="200"/>-->
+            </StackPanel>
+        </Grid>
+        
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Margin="5,0,5,0" Padding="3" Text="Output path" Width="100"/>
+            <TextBox Grid.Column="1" Margin="0,0,5,0" Text="{Binding OutputPath, UpdateSourceTrigger=PropertyChanged}" HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" MinWidth="400"/>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button Margin="0,0,5,0" Padding="3" Command="{Binding BrowseOutputFolder}" Content="Browse" Width="100"/>
+                <!--<Button Command="{Binding GoAction}" Padding="3" Content="Go" MaxWidth="200"/>-->
+            </StackPanel>
+        </Grid>
+
+        <Button Grid.Row="2" HorizontalAlignment="Right" Margin="5" Padding="3" Command="{Binding ProcessImages}" Content="Start processing" MaxWidth="200" Width="100"/>
+        <TextBox Grid.Row="3" Margin="5" Text="{Binding LogText}" FontFamily="Consolas" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" IsReadOnly="True"/>
+        
+        <StackPanel Grid.Row="5" HorizontalAlignment="Right" Orientation="Horizontal">
             <TextBlock Foreground="Red" Text="Unique files found: "/>
             <TextBlock Foreground="Red" Text="{Binding FilesFound}"/>
         </StackPanel>
