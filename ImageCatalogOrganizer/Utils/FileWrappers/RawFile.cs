@@ -12,9 +12,5 @@ namespace Utils
         {
         }
 
-        public override DateTime GetCreationTime()
-        {
-            return DateTime.MinValue;
-        }
     }
 }

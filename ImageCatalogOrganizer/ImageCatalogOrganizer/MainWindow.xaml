@@ -25,10 +25,10 @@
             <TextBlock Margin="5,0,5,0" Padding="3" Text="Search path root" Width="100"/>
             <TextBox Grid.Column="1" Margin="0,0,5,0" Text="{Binding RootPath, UpdateSourceTrigger=PropertyChanged}" HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" MinWidth="400"/>
             
-            <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <!--<StackPanel Grid.Column="2" Orientation="Horizontal">
                 <Button Margin="0,0,5,0" Padding="3" Command="{Binding BrowseRootFolder}" Content="Browse" Width="100"/>
-                <!--<Button Command="{Binding GoAction}" Padding="3" Content="Go" MaxWidth="200"/>-->
-            </StackPanel>
+                --><!--<Button Command="{Binding GoAction}" Padding="3" Content="Go" MaxWidth="200"/>--><!--
+            </StackPanel>-->
         </Grid>
         
         <Grid Grid.Row="1">

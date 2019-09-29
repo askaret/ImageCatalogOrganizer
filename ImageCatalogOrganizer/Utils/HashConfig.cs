@@ -12,8 +12,7 @@ namespace Utils
         private ulong _seed = 0;
         public HashConfig(ulong seed = 0)
         {
-            var r = new Random();
-            _seed = seed != 0 ? seed : (ulong) r.Next();
+           
         }
         public int HashSizeInBits => 64;
 

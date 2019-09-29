@@ -76,7 +76,7 @@ namespace ImageCatalogOrganizer
             OutputPath = Properties.Settings.Default["OutputPath"]?.ToString();
             int numProcs = Environment.ProcessorCount;
 
-            _concurrencyLevel = numProcs * 2;
+            _concurrencyLevel = numProcs * 4;
             addLogEntry($"{numProcs} processors, using {_concurrencyLevel} threads");
             FilesFound = 0;
         }
@@ -101,7 +101,7 @@ namespace ImageCatalogOrganizer
             fbd.SelectedPath = RootPath;
             if (fbd.ShowDialog() != DialogResult.OK)
                 return;
-
+            
             RootPath = fbd.SelectedPath;
         }
 
@@ -135,16 +135,12 @@ namespace ImageCatalogOrganizer
             }));
 
             processFiles();
-
-            addLogEntry($"Found {HashToFile.Count} unique files");
-
-            organizeFiles();
         }
 
         ConcurrentDictionary<string, string> HashToFile = new ConcurrentDictionary<string, string>();
         Dispatcher disp = System.Windows.Application.Current.Dispatcher;
 
-        private void organizeFiles()
+        private void organizeFiles(Dictionary<FileTypeCode, List<FileWrapper>> files)
         {
             var outputRoot = Path.Combine(RootPath, $"{DateTime.Now.Date:yyyy-MM-dd} output");
             addLogEntry($"Processing unique files to {outputRoot}");
@@ -157,28 +153,35 @@ namespace ImageCatalogOrganizer
                     Directory.Delete(outputRoot, true);
                 }
             }
-            
-            Parallel.ForEach(HashToFile, new ParallelOptions { MaxDegreeOfParallelism = _concurrencyLevel }, (kvp) =>
+
+            foreach (var filetype in files.Keys)
             {
-                var filePath = kvp.Value;
+                addLogEntry($"Processing {files[filetype].Count()} file(s) of type {filetype}");
+                var filesToProcess = files[filetype];
 
-                var parser = new Parser();
-                var exifItems = parser.Parse(filePath);
+                Parallel.ForEach(filesToProcess, new ParallelOptions { MaxDegreeOfParallelism = 16 }, (fileToProcess) =>
+                {
+                    var creationTime = File.GetCreationTime(fileToProcess.FilePath);
+                    var imageOutputPath = filetype == FileTypeCode.Video ? Path.Combine(outputRoot, $"videos/{creationTime.Year}") : Path.Combine(outputRoot, creationTime.Year.ToString());
+                    var extension = Path.GetExtension(fileToProcess.FilePath);
 
-                //var creationTime = File.GetCreationTime(filePath);
-                //var imageOutputPath = Path.Combine(outputRoot, creationTime.Year.ToString());
-                //var extension = Path.GetExtension(filePath);
+                    if (!Directory.Exists(imageOutputPath))
+                        Directory.CreateDirectory(imageOutputPath);
 
-                //if (Directory.Exists(imageOutputPath) == false)
-                //    Directory.CreateDirectory(imageOutputPath);
-                
-                
-            });
+                    var newFileName = Path.Combine(imageOutputPath, $"{creationTime:YYYY-mm-DD HH:MM:ss} ({Path.GetFileNameWithoutExtension(fileToProcess.FilePath)}).{extension}");
+                    if (File.Exists(newFileName))
+                    {
+                        addLogEntry($"{newFileName} already exists, skipping");
+                    }
+
+                    File.Copy(fileToProcess.FilePath, newFileName);
+                });
+            }
         }
         private void processFiles()
         {
             addLogEntry($"Getting files from {RootPath}, please wait...");
-            Dictionary<FileTypeCode, FileWrapper> files;
+            Dictionary<FileTypeCode, List<FileWrapper>> files;
             try
             {
                 files = FileFinder.GetAllFiles(RootPath);                
@@ -189,35 +192,17 @@ namespace ImageCatalogOrganizer
                 return;
             }
 
+            addLogEntry($"Unique files found");
+            var sumAllFiles = 0;
+            foreach (var key in files.Keys)
+            {
+                var count = files[key].Count;
+                addLogEntry($"\t{key}\t{count}");
+                sumAllFiles += count;
+            }
+            addLogEntry($"{sumAllFiles} file(s) in total");
 
-            
-
-            //var files = Directory.GetFiles(rootPath);
-            //addLogEntry($"Processing {files.Length:N0} files in {rootPath}");
-
-            //Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = _concurrencyLevel }, (file) =>
-            //{
-            //    var hash = getFileHash(file);
-            //    var added = HashToFile.TryAdd(hash, file);
-            //    if (!added)
-            //    {
-            //        addLogEntry($"Ignoring duplicate file {file}");
-            //    }
-            //    else
-            //    {
-            //        FilesFound += 1;
-            //        disp.BeginInvoke((Action)(() =>
-            //        {
-            //            OnPropertyChanged("FilesFound");
-            //        }));
-            //    }
-            //});
-
-            //var directories = Directory.GetDirectories(rootPath);
-            //foreach (var directory in directories)
-            //{
-            //    processFiles(directory);
-            //}
+            organizeFiles(files);
         }
 
         private static string getFileHash(string file)
@@ -244,9 +229,9 @@ namespace ImageCatalogOrganizer
             disp.BeginInvoke((Action)(() =>
             {
                 if (excludeTimestamp)
-                    LogText = $"\t\t{log}{Environment.NewLine}{LogText}";
+                    LogText += $"\t\t{log}{Environment.NewLine}";
                 else
-                    LogText = $"[{DateTime.Now:HH:mm:ss}]\t{log}{Environment.NewLine}{LogText}";
+                    LogText += $"[{DateTime.Now:HH:mm:ss}]\t{log}{Environment.NewLine}";
             }));
         }
     }
